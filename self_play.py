@@ -3,9 +3,10 @@ import numpy as np
 import ray
 import time
 import torch
+import math
  
 from model import AlphaZeroNetwork
-from GoEnv.environment import GoEnv
+from envs import Env
 
 """
 reference to minigo , muzero 
@@ -59,12 +60,16 @@ class MCTS(object):
         def __init__(self,config, env, model):
 
             self.config = config
+
+            self.is_sampling = config.is_sampling
             self.board_size = config.board_size
+            self.num_actions = config.num_actions
             self.virtual_loss = config.virtual_loss  
             self.parallel_readouts =  config.parallel_readouts
-            self.model = model
             self.num_simulations =  config.num_simulation
             self.c = config.c_puct
+
+            self.model = model
             self.env = env
 
             # Must run this once at the start to expand the root node. 
@@ -109,7 +114,11 @@ class MCTS(object):
                        
                     if done:                                 
                               # 如果已经到达终局，不再往下搜索，并且直接使用实际的输赢作为评估 
-                        value =  1 if self.env.getPlayer(node.state) ==  self.env.getWinner(node.state) else -1
+                        winner = self.env.getWinner(node.state)
+                        if winner != 0 :
+                            value =  1. if self.env.getPlayer(node.state) == winner  else -1.
+                        else:
+                            value =  0.    # 平局
                         self.backpropagate(search_path, value)
                         continue
 
@@ -123,7 +132,7 @@ class MCTS(object):
                         self.revert_virtual_loss(path)
                         self.incorporate_results(prob, value[0], path, leaf_state)
 
-
+ 
         def get_action_probs(self, is_selfplay = True):  # 返回  下一步动作 ， π， 根节点观测状态
                 
                 if is_selfplay == True:    # 添加狄利克雷噪声   用的时候把注释去掉
@@ -134,11 +143,12 @@ class MCTS(object):
                     self.run()
 
                 visit_counts = np.array([ self.root.visit_count(idx)
-                                            for idx in range(self.board_size**2+1)])
-                visit_counts = np.where(visit_counts == 1, 0, visit_counts)             # 若访问次数为1，直接置0
+                                            for idx in range(self.num_actions)])
+                if self.num_simulations > self.num_actions:   # 不然会出现全0的情况
+                    visit_counts = np.where(visit_counts == 1, 0, visit_counts)             # 若访问次数为1，直接置0
                   
                 visit_sums = np.sum(visit_counts)                                          # 归一化                                         
-                action_probs = visit_counts / visit_sums          # 概率和 board_size**2+1 对应
+                pai_probs = visit_counts / visit_sums          # 概率和 self.num_actions 对应
 
                 if is_selfplay ==False:
                     self.temperature = 0.12    # 不是自对弈直接选较大访问次数的动作，不能直接选最大，若直接选最大每局评估的结果都会一样
@@ -148,22 +158,22 @@ class MCTS(object):
              
                 visit_tem = np.power(visit_counts, 1.0 / self.temperature)
  
-                # 缓解类别不平衡的问题
+                # 缓解类别不平衡的问题  先手的优势往往会更大
                 player = self.env.getPlayer(self.root.state)
-                if player == 1 :
+                if player == 1 :   # 下棋时，让先手稍微随机点
                     visit_tem = np.power(visit_counts, 1.0 / np.min([self.temperature+0.08, 1.0]))
 
                 # print("np.sum(visit_tem):", np.sum(visit_tem))
                 visit_probs = np.array(visit_tem )/np.sum(visit_tem)     # 相对于 action_probs 添加了温度系数 （ π也可以是 visit_probs，不过是经过温度变换的）  
-                                                                         # visit_probs 也是和 board_size**2+1 对应
-                candidate_actions = np.arange(self.board_size**2+1)
+                                                                         # visit_probs 也是和 self.num_actions 对应
+                candidate_actions = np.arange(self.num_actions)
   
                 # print("visit_probs:", visit_probs)
                 action = np.random.choice(candidate_actions, p=visit_probs)   # 没有加入狄利克雷噪声的影响，访问次数为0的概率为0，不会被选到
                
                 root_observation = self.env.encode(self.root.state)
   
-                return  action, action_probs, root_observation    # 下一步动作 ， π， 观测状态
+                return  action, pai_probs, root_observation    # 下一步动作 ， π， 观测状态
 
         def select_action(self, gamestate):  # 实际对弈的时候通过该函数 选下一步动作 （不包括自对弈）
 
@@ -199,8 +209,9 @@ class MCTS(object):
             return prior_score + value_score
   
         def incorporate_results(self, policy, value, path, leaf_state):
-            assert policy.shape == (self.board_size **2 + 1,)
-
+ 
+            assert policy.shape == (self.num_actions,), f"policy shape is {policy.shape}, however the number of actions is {self.num_actions}"
+ 
             # If a node was picked multiple times (despite vlosses), we shouldn't 
             # expand it more than once.    # 如果一个节点被多次选择(尽管有虚拟损失)，也不应该扩展它超过一次
             leaf_node = path[-1]
@@ -208,25 +219,30 @@ class MCTS(object):
                 return
             
             # legal moves.
-            legal_actions = self.env.getLegalAction(leaf_state)
-            candidate_actions = np.arange(len(policy))
+            legal_actions = self.env.getLegalAction(leaf_state) 
 
-            # sample
-            sample_actions = np.random.choice(candidate_actions, size= self.config.sample_size, replace=False, p=policy) 
-            
-            if legal_actions[-1] not in sample_actions:  # 保证必须包括pass点
-                sample_actions = list(sample_actions)
-                sample_actions.append(legal_actions[-1])
-  
-            sample_action_priors_old = { act:policy[act] for act  in sample_actions if act in legal_actions} 
-            legal_sample_actions = list(sample_action_priors_old.keys())
+            #** sample--------------------------------
+            if self.is_sampling:
+                
+                policy_legal = policy[legal_actions]/ np.sum(policy[legal_actions])  # 归一化
+
+                sample_num = math.ceil(self.config.sam_percent*len(legal_actions))   # 采样的动作数, 向上取整
+                sample_actions = np.random.choice(legal_actions, size= sample_num, replace=False, p=policy_legal) 
+     
+                expand_action_priors_old = { act:policy[act] for act in sample_actions } 
+                legal_expand_actions = sample_actions
+            #------------------------------------------
+            else: 
+                expand_action_priors_old = { act:policy[act] for act in legal_actions} 
+                legal_expand_actions = legal_actions
+            assert len(legal_expand_actions)> 0 
 
             # 扩展
-            leaf_node.expand(sample_action_priors_old)     # ， TODO：此时该节点的 real_expanded依然为 false
+            leaf_node.expand(expand_action_priors_old)     # ， TODO：此时该节点的 real_expanded依然为 false
             # print("legal_sample_actions:",legal_sample_actions)
-            scale = sum(policy[legal_sample_actions])  # 必须加list
+            scale = np.sum(policy[legal_expand_actions])  
             if scale > 0:
-                for act in legal_sample_actions:   # 重新将概率规范化， 去除不合法节点的概率值
+                for act in legal_expand_actions:   # 重新将概率规范化， 去除不合法节点的概率值
                 # Re-normalize probabilities.
                        prob = policy[act] / scale
                        leaf_node.children[act].prior = prob
@@ -240,7 +256,6 @@ class MCTS(object):
                        leaf_node.children[act].value_init = -0.5 * value
           
             leaf_node.real_expanded = True
-  
             self.backpropagate(path, value)    # 回溯
 
 
@@ -257,7 +272,7 @@ class MCTS(object):
             Args:
                 up_to: The node to propagate until. (Keep track of this! You'll
                     need it to reverse the virtual loss later.)
-            """  
+            """   
             # This is a "win" for the current node; hence a loss for its parent node
             # who will be deciding whether to investigate this node again.
          
@@ -282,10 +297,9 @@ class MCTS(object):
            
             return  policy, value
 
-        def computeValuePolicy(self, leaf_states):# 计算 action_policy、Value  ,  为了方便后续的扩展
+        def computeValuePolicy(self, leaf_states):# 计算 policy、Value  ,  为了方便后续的扩展
             
             observations = np.array([self.env.encode(leaf_state) for leaf_state in leaf_states],dtype="float32")
-            
             policies, values = self.policyValueFn(observations)
 
             return policies, values
@@ -310,8 +324,7 @@ class MCTS(object):
 
         def __str__(self):
             return "MCTS"
- 
- 
+   
 
 @ray.remote
 class SelfPlay():
@@ -319,7 +332,7 @@ class SelfPlay():
     def __init__(self, initial_checkpoint, config, seed):
           
           self.config = config
-          self.env = GoEnv(config)
+          self.env = Env(config)
           self.device = config.device
          
           # Fix random generator
@@ -349,10 +362,10 @@ class SelfPlay():
 
                 while True:  # 未到终局不会跳出这个循环
 
-                    act_action, action_probs, root_observation =  train_agent.get_action_probs()
+                    act_action, pai_probs, root_observation =  train_agent.get_action_probs()
 
                     game_history.observation_history.append(root_observation)
-                    game_history.policy_history.append(action_probs)
+                    game_history.policy_history.append(pai_probs)
 
                     root_current_player = self.env.getPlayer(train_agent.root.state)
                     game_history.player_history.append(root_current_player)
@@ -409,8 +422,9 @@ class SelfPlay():
       
         win_num = 0
         lose_num = 0
+        tie_num = 0
         evaluate_score = ray.get(shared_storage_worker.get_info.remote("evaluate_score"))
-
+ 
         info2 = None
         for i in range(n_games):
             state, done =  self.env.reset()
@@ -429,16 +443,19 @@ class SelfPlay():
 
             if winner == color:
                     win_num += 1
-            else:
-                    lose_num += 1
+            elif winner == BLACK + WHITE - color:
+                    lose_num+= 1
+            else: 
+                    tie_num += 1
+    
             color = BLACK + WHITE - color
 
         win_ratio = win_num / n_games
 
-        print("evaluate_score:{}, win: {},  lose: {}".format(evaluate_score,
-                win_num,  lose_num))
-        info3 = "evaluate_score:{}, win: {}, lose: {}\n".format(evaluate_score,
-                win_num, lose_num)
+        print("evaluate_score:{}, win: {},  lose: {}, tie: {}".format(evaluate_score,
+                win_num,lose_num, tie_num))
+        info3 = "evaluate_score:{}, win: {}, lose: {}, tie: {}\n".format(evaluate_score,
+                win_num, lose_num, tie_num)
 
         if win_ratio == 1:   # 
             shared_storage_worker.set_info.remote("evaluate_score",evaluate_score+100)     # 只要10局全胜 ，得分 + 100
@@ -467,10 +484,14 @@ class GameHistory: # 保存游戏历史
     #     )
      
     def store_value_history(self, winner): # apply at the end of the game
-        self.value_history = [[1] if player == winner else [-1] \
-            for player in self.player_history]
+        if winner != 0:
+            self.value_history = [[1] if player == winner else [-1] \
+                for player in self.player_history]
+        else:
+            self.value_history = [[0] for _ in self.player_history]
+
         # print("winner:", winner, end='')
         # print(", game length:", len(self.player_history))
-    
+      
     def __len__(self):  # 获取长度
         return len(self.player_history)

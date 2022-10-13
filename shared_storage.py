@@ -5,7 +5,7 @@ import os
   
 @ray.remote
 class SharedStorage:
-
+   
     def __init__(self, checkpoint, config):
         self.config = config
         self.current_checkpoint = copy.deepcopy(checkpoint)

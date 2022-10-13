@@ -4,6 +4,7 @@ from ctypes import *
 import ctypes
 import numpy as np
 from numpy.ctypeslib import ndpointer
+import platform
   
 # 构造一个跟c语言一模一样的结构体来传输GoState
 BOARD_SIZE = 9             # 棋盘尺寸 (要跟go_comm.h里的GoComm::BOARD_SIZE保持一致)
@@ -41,8 +42,17 @@ class GoEnv:
         self.ban_pass_until = config.ban_pass_until      # 若干步禁止停着
 
 
-        # self.lib = ctypes.cdll.LoadLibrary("./GoEnv/go_env.dll")       # 加载动态库
-        self.lib = ctypes.cdll.LoadLibrary("./GoEnv/go_env.so")
+        #加载C语言动态库
+        if "Windows" in platform.platform():  # Windows加载dll
+            self.lib = CDLL("./envs/GoEnv/go_env.dll")   # 加载动态库
+    
+        elif "Linux" in platform.platform():  # Linux加载so
+            self.lib = cdll.LoadLibrary("./envs/GoEnv/go_env.so")
+    
+        else:
+            raise NotImplementedError('Only support Windows and Linux system.')
+
+
         self.c_init = self.lib.Init
         self.c_init.argtypes = [c_int, c_int ,c_int, c_float]   # 初始化动态库
         self.c_init(self.history_dim, self.encoded_dim, self.max_step, self.komi)

@@ -11,7 +11,8 @@ import torch.nn.functional as F
 class AlphaZeroNetwork(torch.nn.Module):  # 其他模块主要会调用这个函数
     def __init__(self, config):
         super().__init__()
-        self.network = torch.nn.DataParallel(Network(config.board_size, config.board_size, config.input_dim,config.num_features))
+        self.network = torch.nn.DataParallel(Network(config.board_size, config.board_size,\
+                                      config.input_dim,config.num_features,config.num_actions))
 
     def main_prediction(self,state):
 
@@ -27,7 +28,7 @@ class AlphaZeroNetwork(torch.nn.Module):  # 其他模块主要会调用这个函
 
 class Network(nn.Module):
       
-    def __init__(self, board_width, board_height, input_dim, num_features):
+    def __init__(self, board_width, board_height, input_dim, num_features, num_actions):
         super(Network, self).__init__()                      
 
         self.board_width = board_width
@@ -42,9 +43,9 @@ class Network(nn.Module):
         self.res_conv7 = Self_Attention(num_features)
         self.res_conv8 = ResidualBlock(num_features, num_features)
         self.res_conv9 = ResidualBlock(num_features, num_features)
-        # self.res_conv10 = ResidualBlock(num_features, num_features)
-        # self.res_conv11 = Self_Attention(num_features)
-        # self.res_conv12 = ResidualBlock(num_features, num_features)
+        self.res_conv10 = ResidualBlock(num_features, num_features)
+        self.res_conv11 = Self_Attention(num_features)
+        self.res_conv12 = ResidualBlock(num_features, num_features)
         self.bn_res_end = nn.BatchNorm2d(num_features)
 
         #---------------value_head----------------------------
@@ -57,8 +58,8 @@ class Network(nn.Module):
         self.act_conv = CNNBlock(num_features, 4)
 
         self.act_fc = nn.Linear(4*board_width*board_height,          # 预测策略动作概率
-                                 board_width*board_height+1)
-        
+                                 num_actions)
+         
   
     def forward(self, state_input): 
 
@@ -71,9 +72,9 @@ class Network(nn.Module):
         x = self.res_conv7(x)
         x = self.res_conv8(x)
         x = self.res_conv9(x)
-        # x = self.res_conv10(x)
-        # x = self.res_conv11(x)
-        # x = self.res_conv12(x)
+        x = self.res_conv10(x)
+        x = self.res_conv11(x)
+        x = self.res_conv12(x)
         x = F.relu(self.bn_res_end(x))
   
         #---------------value_head----------------------------
@@ -188,7 +189,7 @@ class Self_Attention(nn.Module):   # 自注意力模块
     def __init__(self, in_dim):
         super(Self_Attention, self).__init__()
         self.chanel_in = in_dim
-
+  
         self.query_conv = nn.Conv2d(in_channels=in_dim, out_channels=in_dim //8, kernel_size=1)
         self.key_conv = nn.Conv2d(in_channels=in_dim, out_channels=in_dim //8 , kernel_size=1)
         self.value_conv = nn.Conv2d(in_channels=in_dim, out_channels=in_dim, kernel_size=1)

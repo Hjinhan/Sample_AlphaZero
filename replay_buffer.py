@@ -41,7 +41,7 @@ class ReplayBuffer:
         self.total_samples += len(game_history)    # 总样本数
  
         if self.config.replay_buffer_size < len(self.buffer):
-            del_id = self.num_played_games - len(self.buffer)   # 中间保存再加载会出现错误, 只是加载一次没有什么问题，第二次出错
+            del_id = self.num_played_games - len(self.buffer)   # 
             self.total_samples -= len(self.buffer[del_id])
             del self.buffer[del_id]
         
@@ -88,16 +88,25 @@ class ReplayBuffer:
         target_value = game_history.value_history[game_pos]
         
         augment_index = np.random.randint(8) # 随机选一种数据增强
-        target_observation, target_policy = self.data_augment(
-            target_observation, target_policy, augment_index, 
-        )
+        
+        if self.config.env_id == "go" or self.config.env_id == "gomoku":
+            target_observation, target_policy = self.data_augment(
+                target_observation, target_policy, augment_index, 
+            )
+
         return target_observation, target_policy, target_value
 
     def data_augment(self, observation, policy, index):   # 数据增强x8, 旋转和翻转, index取0~7
         if index == 0:
             return observation, policy
+        
+        if self.config.env_id == "go":
+            policy_pos, policy_pass = policy[:-1], policy[-1] # 策略拆成位置和停着
+        elif self.config.env_id == "gomoku":
+            policy_pos = policy[:]
+        else:
+            raise NotImplementedError('Only support board env.')
 
-        policy_pos, policy_pass = policy[:-1], policy[-1] # 策略拆成位置和停着
         policy_pos = policy_pos.reshape(self.config.board_size, -1) # reshape成二维
           
         #----------------翻转----------------
@@ -108,7 +117,9 @@ class ReplayBuffer:
         #----------------旋转----------------
         observation = np.rot90(observation, k=index, axes=(-2, -1)) # 旋转后两维
         policy_pos = np.rot90(policy_pos, k=index, axes=(-2, -1))
-        policy_pos = policy_pos.flatten() # 压回一维
-        policy = np.append(policy_pos, policy_pass) # 把停着拼回来
+        policy = policy_pos.flatten() # 压回一维
+        
+        if self.config.env_id == "go":
+            policy = np.append(policy, policy_pass) # 把停着拼回来
 
         return observation, policy

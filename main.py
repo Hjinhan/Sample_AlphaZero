@@ -13,18 +13,16 @@ import copy
   
 from model import AlphaZeroNetwork
 from self_play import SelfPlay
-from configure import Config
+from configs import Config
 from trainer import Trainer
 from replay_buffer import ReplayMemory
 import shared_storage
 
 from tensorboardX import SummaryWriter
-   
 
 class TrainPipeline(object):
     def __init__(self,config):
 
-        self.config = config
         self.config = config
         self.best_win_ratio = 0.0 # 评估模型时的最好胜率（胜率为1时evaluate_score得分会+100，并且best_win_ratio会重置为0）
 
@@ -102,7 +100,6 @@ class TrainPipeline(object):
         self.replay_buffer_worker = ReplayMemory(
                     self.checkpoint, self.replay_buffer, self.config, 
                 )
-
 
         totalGpuThreads =  self.config.play_workers_num+2    # 使用到gpu的线程数
         num_gpus_per_worker = self.num_gpus/totalGpuThreads  # 每个线程使用的gpu数量，可以小于1， 平均即可，单卡的时候会自动分配
@@ -214,7 +211,7 @@ class TrainPipeline(object):
                             self.best_win_ratio = 0.0
                 
                 t = a % self.config.store_batch     # 按时间保存份数据，新保存的数据不会覆盖上一份数据
-                if (counter+1) % 15000== 0  and self.config.is_save_buffer :  # 数据存储
+                if (counter+1) % 20000== 0  and self.config.is_save_buffer :  # 数据存储
                     self.save_buffer(t)
                     a+=1  
 
@@ -307,7 +304,12 @@ class CPUActor:
 
 if __name__ == '__main__':
     start = time.time()
-    config = Config()
+
+    # env_name = "gomoku"
+    env_name = "go"
+ 
+    config = Config(env_name)
+    print(config.env_id)
     training_pipeline = TrainPipeline(config)
     training_pipeline.train()
 

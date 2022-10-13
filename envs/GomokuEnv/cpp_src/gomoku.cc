@@ -1,8 +1,3 @@
-#if 1
-#define DLL_API __declspec(dllexport)      
-#else
-#define DLL_API __declspec(dllimport)
-#endif
 
 #include<iostream>
 #include <cstring>
@@ -22,15 +17,10 @@ typedef struct {
 
 extern "C" {
 
-	DLL_API void Init(int board_size_);
-	DLL_API int is_finished(int *board, int *winner);
-	DLL_API void encode(int *board, int *encode_state, int current_player, int state_channels, int last_act1, int last_act2);
-	DLL_API int *restrain(int *encode_state, int *board, int current_player);
-
-	/*void Init(int board_size_);
+	void Init(int board_size_);
 	int is_finished(int *board, int *winner);
 	void encode(int *board, int *encode_state, int current_player, int state_channels, int last_act1, int last_act2);
-	int *restrain_random(int *encode_state, int *board, int current_player);*/
+	int *restrain_random(int *encode_state, int *board, int current_player);
 
 
 	Point gp[361];

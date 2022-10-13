@@ -1,6 +1,6 @@
 import copy
 import time
-  
+   
 import ray
 import torch
 import torch.nn.functional as F
@@ -98,7 +98,7 @@ class Trainer:
                         and ray.get(shared_storage.get_info.remote("training_step")) 
                         < self.config.training_steps 
                         and self.config.adjust_train_play_ratio
- 
+    
                 ): 
                     time.sleep(0.5)
 
@@ -127,7 +127,7 @@ class Trainer:
     def update_lr(self): # 更新学习率
         if self.optimizer.param_groups[0]["lr"] == self.config.lr_final:
             return  # 达到最终学习率了, 直接返回
-         
+      
         lr = self.optimizer.param_groups[0]["lr"]
         
         if lr != 0.5*self.config.lr_init and self.training_step < 25000:
@@ -140,7 +140,7 @@ class Trainer:
          
         for param_group in self.optimizer.param_groups:
             param_group["lr"] = lr
-
+    
 
     @staticmethod
     def loss_function(policy, value, target_policy, target_value): # 损失函数
