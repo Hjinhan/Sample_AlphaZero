@@ -23,10 +23,9 @@ class Node:
         self.value_init = 0
 
         self.children = {}
-        self.real_expanded = False   # 判断是否完成了真正的扩展（子节点的prior不为0）
          
-    def expanded(self):     # 判断子节点是否扩展过
-        return self.real_expanded    # 创建子节点并不算真正扩展（子节点内容全空），只有子节点的prior不为0才算真正扩展
+    def expanded(self):     # 判断是否扩展过
+        return len(self.children) > 0    
 
     def value(self):       # 期望价值
         if self.total_visit_count == 0 :
@@ -85,7 +84,6 @@ class MCTS(object):
             legal_actions = self.env.getLegalAction(self.root.state)    
             action_priors = { idx: p for idx, p in enumerate(policy) if idx in legal_actions} 
             self.root.expand(action_priors, value)
-            self.root.real_expanded = True
   
         def run(self):
                 """
@@ -186,7 +184,6 @@ class MCTS(object):
              legal_actions = self.env.getLegalAction(self.root.state)    
              action_priors = { idx: p for idx, p in enumerate(policy) if idx in legal_actions} 
              self.root.expand(action_priors, value)
-             self.root.real_expanded = True
 
              action, _, _=self.get_action_probs(is_selfplay=False)
              return action
@@ -238,7 +235,7 @@ class MCTS(object):
             assert len(legal_expand_actions)> 0 
 
             # 扩展
-            leaf_node.expand(expand_action_priors_old)     # ， TODO：此时该节点的 real_expanded依然为 false
+            leaf_node.expand(expand_action_priors_old)     # 
             # print("legal_sample_actions:",legal_sample_actions)
             scale = np.sum(policy[legal_expand_actions])  
             if scale > 0:
@@ -254,8 +251,7 @@ class MCTS(object):
                        # Conversely, if W is winning, then B will explore all 362 moves before
                        # continuing to explore the most favorable move. This is a waste of search.
                        leaf_node.children[act].value_init = -0.5 * value
-          
-            leaf_node.real_expanded = True
+
             self.backpropagate(path, value)    # 回溯
 
 
@@ -317,14 +313,13 @@ class MCTS(object):
 
                         legal_actions = self.env.getLegalAction(self.root.state)    
                         action_priors = { idx: p for idx, p in enumerate(policy) if idx in legal_actions} 
-                        self.root.expand(action_priors, value)
-                        self.root.real_expanded = True                        
+                        self.root.expand(action_priors, value)                      
  
                 return done
 
         def __str__(self):
             return "MCTS"
-   
+    
 
 @ray.remote
 class SelfPlay():
