@@ -25,7 +25,7 @@ class Node:
         self.children = {}
          
     def expanded(self):     # 判断是否扩展过
-        return len(self.children) > 0    
+        return len(self.children) > 0 
 
     def value(self):       # 期望价值
         if self.total_visit_count == 0 :
@@ -286,7 +286,7 @@ class MCTS(object):
         def policyValueFn(self, observations):   # 计算 policy 、 Value
 
             observations = torch.from_numpy(observations).to(next(self.model.parameters()).device)
-            policy, value  = self.model.main_prediction(observations)
+            policy, value  = self.model.prediction(observations)
 
             policy =policy.detach().cpu().numpy()
             value = value.detach().cpu().numpy()
@@ -319,7 +319,7 @@ class MCTS(object):
 
         def __str__(self):
             return "MCTS"
-    
+   
 
 @ray.remote
 class SelfPlay():

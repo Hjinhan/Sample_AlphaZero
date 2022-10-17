@@ -111,7 +111,7 @@ class Trainer:
         target_value = torch.from_numpy(target_value.copy()).float().to(device)
 
         # Predict  # 模型预测
-        policy, value = self.model.main_prediction(observation_batch)
+        policy, value = self.model.prediction(observation_batch)
         # Compute loss  # 计算损失
         policy_loss, value_loss, entropy_loss = self.loss_function(policy, value, target_policy, target_value) # 计算策略、价值损失
         loss = 1.15*policy_loss + value_loss + 0.02*entropy_loss

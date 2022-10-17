@@ -14,7 +14,7 @@ class AlphaZeroNetwork(torch.nn.Module):  # 其他模块主要会调用这个函
         self.network = torch.nn.DataParallel(Network(config.board_size, config.board_size,\
                                       config.input_dim,config.num_features,config.num_actions))
 
-    def main_prediction(self,state):
+    def prediction(self,state):
 
          act_policy, value = self.network(state)
          return act_policy, value
@@ -38,14 +38,14 @@ class Network(nn.Module):
         self.res_conv2 = ResidualBlock(num_features, num_features)
         self.res_conv3 = Self_Attention(num_features)
         self.res_conv4 = ResidualBlock(num_features, num_features)
-        self.res_conv5 = ResidualBlock(num_features, num_features)
-        self.res_conv6 = ResidualBlock(num_features, num_features)
-        self.res_conv7 = Self_Attention(num_features)
-        self.res_conv8 = ResidualBlock(num_features, num_features)
-        self.res_conv9 = ResidualBlock(num_features, num_features)
-        self.res_conv10 = ResidualBlock(num_features, num_features)
-        self.res_conv11 = Self_Attention(num_features)
-        self.res_conv12 = ResidualBlock(num_features, num_features)
+        # self.res_conv5 = ResidualBlock(num_features, num_features)
+        # self.res_conv6 = ResidualBlock(num_features, num_features)
+        # self.res_conv7 = Self_Attention(num_features)
+        # self.res_conv8 = ResidualBlock(num_features, num_features)
+        # self.res_conv9 = ResidualBlock(num_features, num_features)
+        # self.res_conv10 = ResidualBlock(num_features, num_features)
+        # self.res_conv11 = Self_Attention(num_features)
+        # self.res_conv12 = ResidualBlock(num_features, num_features)
         self.bn_res_end = nn.BatchNorm2d(num_features)
 
         #---------------value_head----------------------------
@@ -67,14 +67,14 @@ class Network(nn.Module):
         x = self.res_conv2(x)
         x = self.res_conv3(x)
         x = self.res_conv4(x)
-        x = self.res_conv5(x)
-        x = self.res_conv6(x)
-        x = self.res_conv7(x)
-        x = self.res_conv8(x)
-        x = self.res_conv9(x)
-        x = self.res_conv10(x)
-        x = self.res_conv11(x)
-        x = self.res_conv12(x)
+        # x = self.res_conv5(x)
+        # x = self.res_conv6(x)
+        # x = self.res_conv7(x)
+        # x = self.res_conv8(x)
+        # x = self.res_conv9(x)
+        # x = self.res_conv10(x)
+        # x = self.res_conv11(x)
+        # x = self.res_conv12(x)
         x = F.relu(self.bn_res_end(x))
   
         #---------------value_head----------------------------
@@ -189,7 +189,7 @@ class Self_Attention(nn.Module):   # 自注意力模块
     def __init__(self, in_dim):
         super(Self_Attention, self).__init__()
         self.chanel_in = in_dim
-  
+
         self.query_conv = nn.Conv2d(in_channels=in_dim, out_channels=in_dim //8, kernel_size=1)
         self.key_conv = nn.Conv2d(in_channels=in_dim, out_channels=in_dim //8 , kernel_size=1)
         self.value_conv = nn.Conv2d(in_channels=in_dim, out_channels=in_dim, kernel_size=1)
